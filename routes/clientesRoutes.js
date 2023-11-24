@@ -1,4 +1,4 @@
-// routes/clientesRoutes.js
+
 const express = require('express');
 const clientesController = require('../controllers/clientesController');
 
@@ -12,23 +12,15 @@ router.delete('/clientes/:id', async (req, res) => {
   await clientesController.eliminarCliente(req, res);
 });
 
-router.put('/clientes/:id', async (req, res) => {
-  await clientesController.updateCliente(req, res);
+router.get('/clientes/:id', async (req, res) => {
+  await clientesController.obtenerCliente(req, res);
 });
-
 
 router.put('/clientes/:id', async (req, res) => {
   const clienteId = req.params.id;
-  const nuevoCliente = req.body;
+  const nuevoCliente = req.body; // Obtén los datos del cuerpo de la solicitud
 
-  try {
-    await clientesController.updateCliente(clienteId, nuevoCliente, res); // Pasa res como parámetro
-  } catch (error) {
-    console.error(error);
-    res.status(500).send('Error interno del servidor');
-  }
+  await clientesController.updateCliente(req, res); // Pasa req y res como parámetros
 });
-
-// Agrega más rutas según tus necesidades
 
 module.exports = router;

@@ -4,7 +4,6 @@ async function insertarCliente(req, res) {
   const cliente = req.body;
 
   try {
-    // Verificar si el cliente ya está registrado
     const clienteExistente = await verificarClienteExistente(cliente.id);
 
     if (clienteExistente) {
@@ -13,13 +12,9 @@ async function insertarCliente(req, res) {
       return;
     }
 
-    // Insertar en la tabla address
     const addressId = await insertAddress(cliente.address);
-
-    // Insertar en la tabla store
     const storeId = await insertStore(cliente.store);
 
-    // Insertar en la tabla clientes con las claves foráneas
     await insertCliente(cliente, addressId, storeId);
 
     console.log('Cliente insertado correctamente.');
@@ -46,17 +41,14 @@ async function eliminarCliente(req, res) {
   const clienteId = req.params.id;
 
   try {
-    // Obtener la información del cliente para obtener los IDs relacionados
     const clienteInfo = await getClienteInfo(clienteId);
 
     if (!clienteInfo) {
-      // El cliente no está registrado
       console.log('Cliente no encontrado.');
       res.status(404).send('Cliente no encontrado');
       return;
     }
 
-    // Eliminar el cliente y sus datos relacionados
     await deleteCliente(clienteId, clienteInfo.address_id, clienteInfo.store_id);
 
     console.log('Cliente eliminado correctamente.');
@@ -71,7 +63,7 @@ async function getClienteInfo(clienteId) {
   return new Promise((resolve, reject) => {
     db.query('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, result) => {
       if (err) reject(err);
-      if (result.length === 0) resolve(null); // Cliente no encontrado
+      if (result.length === 0) resolve(null);
       else {
         const clienteInfo = result[0];
         resolve({
@@ -88,7 +80,6 @@ async function deleteCliente(clienteId, addressId, storeId) {
     db.beginTransaction((err) => {
       if (err) reject(err);
 
-      // Eliminar en la tabla clientes
       db.query('DELETE FROM clientes WHERE id = ?', [clienteId], (err) => {
         if (err) {
           db.rollback(() => {
@@ -96,7 +87,6 @@ async function deleteCliente(clienteId, addressId, storeId) {
           });
         }
 
-        // Eliminar en la tabla address
         db.query('DELETE FROM address WHERE id = ?', [addressId], (err) => {
           if (err) {
             db.rollback(() => {
@@ -104,7 +94,6 @@ async function deleteCliente(clienteId, addressId, storeId) {
             });
           }
 
-          // Eliminar en la tabla store
           db.query('DELETE FROM store WHERE id = ?', [storeId], (err) => {
             if (err) {
               db.rollback(() => {
@@ -218,14 +207,11 @@ async function getCliente(clienteId) {
     try {
       const clienteInfo = await queryClienteInfo(clienteId);
       if (!clienteInfo) {
-        resolve(null); // Cliente no encontrado
+        resolve(null);
         return;
       }
 
-      // Obtener información detallada de la tabla 'address'
       const addressInfo = await queryAddressInfo(clienteInfo.address_id);
-
-      // Obtener información detallada de la tabla 'store'
       const storeInfo = await queryStoreInfo(clienteInfo.store_id);
 
       resolve({
@@ -237,8 +223,8 @@ async function getCliente(clienteId) {
         phone_number: clienteInfo.phone_number,
         status: clienteInfo.status,
         balance: clienteInfo.balance,
-        address: addressInfo, // Agregar información detallada de 'address'
-        store: storeInfo,     // Agregar información detallada de 'store'
+        address: addressInfo,
+        store: storeInfo,
         clabe: clienteInfo.clabe,
       });
     } catch (err) {
@@ -287,19 +273,25 @@ async function updateCliente(req, res) {
       return;
     }
 
-    const { address, store, ...datosCliente } = nuevoCliente;
-    const setClause = Object.keys(datosCliente).map(key => `${key} = ?`).join(', ');
-    const values = Object.values(datosCliente);
-    values.push(clienteId);
+    if (!nuevoCliente || typeof nuevoCliente !== 'object' || !('id' in nuevoCliente) || nuevoCliente.id === undefined) {
+      console.log('Datos del cliente no válidos.');
+      res.status(400).send('Datos del cliente no válidos');
+      return;
+    }
 
-    console.log('UPDATE clientes SET', setClause, 'WHERE id = ?', values);
-    await db.query(`UPDATE clientes SET ${setClause} WHERE id = ?`, values);
+    const { address, store, ...datosCliente } = nuevoCliente;
+
+    const setClienteClause = Object.keys(datosCliente).map(key => `${key} = ?`).join(', ');
+    const valuesCliente = Object.values(datosCliente);
+    valuesCliente.push(clienteId);
+
+    await db.query(`UPDATE clientes SET ${setClienteClause} WHERE id = ?`, valuesCliente);
 
     if (address) {
-      const addressExistente = await verificarAddressExistente(nuevoCliente.address_id);
+      const addressExistente = await verificarAddressExistente(address.id);
 
       if (addressExistente) {
-        await updateAddress(nuevoCliente.address_id, address);
+        await updateAddress(address.id, address);
       } else {
         console.log('Dirección no encontrada.');
         res.status(404).send('Dirección no encontrada');
@@ -308,7 +300,15 @@ async function updateCliente(req, res) {
     }
 
     if (store) {
-      await updateStore(nuevoCliente.store_id, store);
+      const storeExistente = await verificarTiendaExistente(store.id);
+
+      if (storeExistente) {
+        await updateStore(store.id, store);
+      } else {
+        console.log('Tienda no encontrada.');
+        res.status(404).send('Tienda no encontrada');
+        return;
+      }
     }
 
     console.log('Cliente actualizado correctamente.');
@@ -331,49 +331,32 @@ async function verificarAddressExistente(addressId) {
   });
 }
 
-
-
-async function updateAddress(addressId, newAddress) {
-  try {
-    // Verificar si la dirección existe
-    const addressExistente = await verificarAddressExistente(addressId);
-
-    if (!addressExistente) {
-      console.log('Dirección no encontrada.');
-      throw new Error('Dirección no encontrada');
-    }
-
-    // Extraer las propiedades street, city, state, y zipcode
-    const { street, city, state, zipcode } = newAddress;
-
-    // Construir la parte de SET de la consulta SQL
-    const setClause = 'street = ?, city = ?, state = ?, zipcode = ?';
-
-    // Construir los valores a actualizar
-    const values = [street, city, state, zipcode, addressId];
-
-    // Imprimir la consulta SQL y los valores (para propósitos de depuración)
-    console.log('UPDATE address SET', setClause, 'WHERE id = ?', values);
-
-    // Realizar la actualización en la tabla address
-    await db.query(`UPDATE address SET ${setClause} WHERE id = ?`, values);
-
-    console.log('Dirección actualizada correctamente.');
-  } catch (err) {
-    console.error('Error al actualizar dirección: ', err);
-    throw err;
-  }
-}
-
-
-async function updateStore(storeId, newStore) {
+async function verificarTiendaExistente(tiendaId) {
   return new Promise((resolve, reject) => {
-    db.query('UPDATE store SET ? WHERE id = ?', [newStore, storeId], (err, result) => {
+    db.query('SELECT * FROM store WHERE id = ?', [tiendaId], (err, result) => {
       if (err) {
         reject(err);
       } else {
-        resolve(result);
+        resolve(result.length > 0);
       }
+    });
+  });
+}
+
+async function updateAddress(addressId, addressData) {
+  return new Promise((resolve, reject) => {
+    db.query('UPDATE address SET ? WHERE id = ?', [addressData, addressId], (err, result) => {
+      if (err) reject(err);
+      resolve(result);
+    });
+  });
+}
+
+async function updateStore(storeId, storeData) {
+  return new Promise((resolve, reject) => {
+    db.query('UPDATE store SET ? WHERE id = ?', [storeData, storeId], (err, result) => {
+      if (err) reject(err);
+      resolve(result);
     });
   });
 }
