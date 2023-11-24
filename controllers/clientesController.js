@@ -1,4 +1,3 @@
-// controllers/clientesController.js
 const db = require('../config/db');
 
 async function insertarCliente(req, res) {
@@ -195,8 +194,193 @@ async function insertCliente(cliente, addressId, storeId) {
   });
 }
 
+async function obtenerCliente(req, res) {
+  const clienteId = req.params.id;
+
+  try {
+    const cliente = await getCliente(clienteId);
+
+    if (!cliente) {
+      console.log('Cliente no encontrado.');
+      res.status(404).send('Cliente no encontrado');
+      return;
+    }
+
+    res.status(200).json(cliente);
+  } catch (err) {
+    console.error('Error al obtener cliente: ', err);
+    res.status(500).send('Error interno del servidor');
+  }
+}
+
+async function getCliente(clienteId) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const clienteInfo = await queryClienteInfo(clienteId);
+      if (!clienteInfo) {
+        resolve(null); // Cliente no encontrado
+        return;
+      }
+
+      // Obtener información detallada de la tabla 'address'
+      const addressInfo = await queryAddressInfo(clienteInfo.address_id);
+
+      // Obtener información detallada de la tabla 'store'
+      const storeInfo = await queryStoreInfo(clienteInfo.store_id);
+
+      resolve({
+        id: clienteInfo.id,
+        name: clienteInfo.name,
+        creation_date: clienteInfo.creation_date,
+        last_name: clienteInfo.last_name,
+        email: clienteInfo.email,
+        phone_number: clienteInfo.phone_number,
+        status: clienteInfo.status,
+        balance: clienteInfo.balance,
+        address: addressInfo, // Agregar información detallada de 'address'
+        store: storeInfo,     // Agregar información detallada de 'store'
+        clabe: clienteInfo.clabe,
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function queryClienteInfo(clienteId) {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, result) => {
+      if (err) reject(err);
+      resolve(result.length > 0 ? result[0] : null);
+    });
+  });
+}
+
+async function queryAddressInfo(addressId) {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM address WHERE id = ?', [addressId], (err, result) => {
+      if (err) reject(err);
+      resolve(result.length > 0 ? result[0] : null);
+    });
+  });
+}
+
+async function queryStoreInfo(storeId) {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM store WHERE id = ?', [storeId], (err, result) => {
+      if (err) reject(err);
+      resolve(result.length > 0 ? result[0] : null);
+    });
+  });
+}
+
+async function updateCliente(req, res) {
+  const clienteId = req.params.id;
+  const nuevoCliente = req.body;
+
+  try {
+    const clienteExistente = await verificarClienteExistente(clienteId);
+
+    if (!clienteExistente) {
+      console.log('Cliente no encontrado.');
+      res.status(404).send('Cliente no encontrado');
+      return;
+    }
+
+    const { address, store, ...datosCliente } = nuevoCliente;
+    const setClause = Object.keys(datosCliente).map(key => `${key} = ?`).join(', ');
+    const values = Object.values(datosCliente);
+    values.push(clienteId);
+
+    console.log('UPDATE clientes SET', setClause, 'WHERE id = ?', values);
+    await db.query(`UPDATE clientes SET ${setClause} WHERE id = ?`, values);
+
+    if (address) {
+      const addressExistente = await verificarAddressExistente(nuevoCliente.address_id);
+
+      if (addressExistente) {
+        await updateAddress(nuevoCliente.address_id, address);
+      } else {
+        console.log('Dirección no encontrada.');
+        res.status(404).send('Dirección no encontrada');
+        return;
+      }
+    }
+
+    if (store) {
+      await updateStore(nuevoCliente.store_id, store);
+    }
+
+    console.log('Cliente actualizado correctamente.');
+    res.status(200).send('Cliente actualizado correctamente.');
+  } catch (err) {
+    console.error('Error al actualizar cliente: ', err);
+    res.status(500).send('Error interno del servidor');
+  }
+}
+
+async function verificarAddressExistente(addressId) {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM address WHERE id = ?', [addressId], (err, result) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result.length > 0);
+      }
+    });
+  });
+}
+
+
+
+async function updateAddress(addressId, newAddress) {
+  try {
+    // Verificar si la dirección existe
+    const addressExistente = await verificarAddressExistente(addressId);
+
+    if (!addressExistente) {
+      console.log('Dirección no encontrada.');
+      throw new Error('Dirección no encontrada');
+    }
+
+    // Extraer las propiedades street, city, state, y zipcode
+    const { street, city, state, zipcode } = newAddress;
+
+    // Construir la parte de SET de la consulta SQL
+    const setClause = 'street = ?, city = ?, state = ?, zipcode = ?';
+
+    // Construir los valores a actualizar
+    const values = [street, city, state, zipcode, addressId];
+
+    // Imprimir la consulta SQL y los valores (para propósitos de depuración)
+    console.log('UPDATE address SET', setClause, 'WHERE id = ?', values);
+
+    // Realizar la actualización en la tabla address
+    await db.query(`UPDATE address SET ${setClause} WHERE id = ?`, values);
+
+    console.log('Dirección actualizada correctamente.');
+  } catch (err) {
+    console.error('Error al actualizar dirección: ', err);
+    throw err;
+  }
+}
+
+
+async function updateStore(storeId, newStore) {
+  return new Promise((resolve, reject) => {
+    db.query('UPDATE store SET ? WHERE id = ?', [newStore, storeId], (err, result) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result);
+      }
+    });
+  });
+}
+
 module.exports = {
   insertarCliente,
   eliminarCliente,
-  // Agrega más funciones según tus necesidades
+  updateCliente,
+  obtenerCliente,
 };
