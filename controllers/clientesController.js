@@ -5,6 +5,15 @@ async function insertarCliente(req, res) {
   const cliente = req.body;
 
   try {
+    // Verificar si el cliente ya está registrado
+    const clienteExistente = await verificarClienteExistente(cliente.id);
+
+    if (clienteExistente) {
+      console.log('El cliente ya está registrado.');
+      res.status(400).send('El cliente ya está registrado');
+      return;
+    }
+
     // Insertar en la tabla address
     const addressId = await insertAddress(cliente.address);
 
@@ -20,6 +29,18 @@ async function insertarCliente(req, res) {
     console.error('Error al insertar cliente: ', err);
     res.status(500).send('Error interno del servidor');
   }
+}
+
+async function verificarClienteExistente(clienteId) {
+  return new Promise((resolve, reject) => {
+    db.query('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, result) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result.length > 0);
+      }
+    });
+  });
 }
 
 async function eliminarCliente(req, res) {
