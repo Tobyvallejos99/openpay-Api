@@ -135,8 +135,8 @@ async function insertStore(store) {
   });
 }
 
-async function insertCliente(cliente, addressId, storeId) {
-  return new Promise((resolve, reject) => {
+async function insertCliente(cliente) {
+  return new Promise(async (resolve, reject) => {
     const {
       id,
       creation_date,
@@ -148,38 +148,42 @@ async function insertCliente(cliente, addressId, storeId) {
       status,
       balance,
       clabe,
+      address,
+      store,
     } = cliente;
 
-    const clienteData = {
-      id,
-      creation_date,
-      name,
-      last_name,
-      email,
-      phone_number,
-      external_id,
-      status,
-      balance,
-      address_id: addressId,
-      store_id: storeId,
-      clabe,
-    };
+    try {
+      // Insertar la dirección
+      const addressId = await insertAddress(address);
 
-    db.query('SELECT * FROM clientes WHERE id = ?', [id], (err, result) => {
-      if (err) {
-        reject(err);
-      } else if (result.length > 0) {
-        reject('El cliente ya está registrado');
-      } else {
-        db.query('INSERT INTO clientes SET ?', clienteData, (err, result) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(result);
-          }
-        });
-      }
-    });
+      // Insertar la tienda
+      const storeId = await insertStore(store);
+
+      const clienteData = {
+        id,
+        creation_date,
+        name,
+        last_name,
+        email,
+        phone_number,
+        external_id,
+        status,
+        balance,
+        address_id: addressId,
+        store_id: storeId,
+        clabe,
+      };
+
+      db.query('INSERT INTO clientes SET ?', clienteData, (err, result) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(result);
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
@@ -288,26 +292,36 @@ async function updateCliente(req, res) {
     await db.query(`UPDATE clientes SET ${setClienteClause} WHERE id = ?`, valuesCliente);
 
     if (address) {
-      const addressExistente = await verificarAddressExistente(address.id);
+      if (address.id) {
+        const addressExistente = await verificarAddressExistente(address.id);
 
-      if (addressExistente) {
-        await updateAddress(address.id, address);
+        if (addressExistente) {
+          await updateAddress(address.id, address);
+          console.log('Dirección actualizada correctamente.');
+        } else {
+          console.log('Dirección no encontrada.');
+          res.status(404).send('Dirección no encontrada');
+          return;
+        }
       } else {
-        console.log('Dirección no encontrada.');
-        res.status(404).send('Dirección no encontrada');
-        return;
+        console.log('ID de dirección no proporcionado.');
       }
     }
 
     if (store) {
-      const storeExistente = await verificarTiendaExistente(store.id);
+      if (store.id) {
+        const storeExistente = await verificarTiendaExistente(store.id);
 
-      if (storeExistente) {
-        await updateStore(store.id, store);
+        if (storeExistente) {
+          await updateStore(store.id, store);
+          console.log('Tienda actualizada correctamente.');
+        } else {
+          console.log('Tienda no encontrada.');
+          res.status(404).send('Tienda no encontrada');
+          return;
+        }
       } else {
-        console.log('Tienda no encontrada.');
-        res.status(404).send('Tienda no encontrada');
-        return;
+        console.log('ID de tienda no proporcionado.');
       }
     }
 
@@ -347,7 +361,7 @@ async function updateAddress(addressId, addressData) {
   return new Promise((resolve, reject) => {
     db.query('UPDATE address SET ? WHERE id = ?', [addressData, addressId], (err, result) => {
       if (err) reject(err);
-      resolve(result);
+      resolve(result.affectedRows > 0); // Verificar si alguna fila fue afectada
     });
   });
 }
@@ -356,7 +370,7 @@ async function updateStore(storeId, storeData) {
   return new Promise((resolve, reject) => {
     db.query('UPDATE store SET ? WHERE id = ?', [storeData, storeId], (err, result) => {
       if (err) reject(err);
-      resolve(result);
+      resolve(result.affectedRows > 0); // Verificar si alguna fila fue afectada
     });
   });
 }
