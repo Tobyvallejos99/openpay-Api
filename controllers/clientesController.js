@@ -1,9 +1,17 @@
 const db = require('../config/db');
+const { v4: uuidv4 } = require('uuid');
+
+
 
 async function insertarCliente(req, res) {
   const cliente = req.body;
 
   try {
+    // Generar una ID aleatoria si no se proporciona desde el frontend
+    if (!cliente.id) {
+      cliente.id = uuidv4();
+    }
+
     const clienteExistente = await verificarClienteExistente(cliente.id);
 
     if (clienteExistente) {
@@ -119,21 +127,62 @@ async function deleteCliente(clienteId, addressId, storeId) {
 
 async function insertAddress(address) {
   return new Promise((resolve, reject) => {
-    db.query('INSERT INTO address SET ?', address, (err, result) => {
-      if (err) reject(err);
-      resolve(result.insertId);
+    if (!address || typeof address !== 'object') {
+      console.error('El objeto address está vacío o no es un objeto:', address);
+      resolve(null);
+      return;
+    }
+
+    const addressKeys = Object.keys(address);
+
+    if (addressKeys.length === 0) {
+      console.error('El objeto address está vacío:', address);
+      resolve(null);
+      return;
+    }
+
+    const columns = addressKeys.join(', ');
+    const placeholders = addressKeys.map(() => '?').join(', ');
+    const query = `INSERT INTO address (${columns}) VALUES (${placeholders})`;
+    const values = addressKeys.map(key => address[key]);
+
+    db.query(query, values, (err, result) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result.insertId);
+      }
     });
   });
 }
 
 async function insertStore(store) {
   return new Promise((resolve, reject) => {
+    if (!store || typeof store !== 'object') {
+      console.error('El objeto store está vacío o no es un objeto:', store);
+      resolve(null);
+      return;
+    }
+
+    const storeKeys = Object.keys(store);
+
+    if (storeKeys.length === 0) {
+      console.error('El objeto store está vacío:', store);
+      resolve(null);
+      return;
+    }
+
     db.query('INSERT INTO store SET ?', store, (err, result) => {
-      if (err) reject(err);
-      resolve(result.insertId);
+      if (err) {
+        reject(err);
+      } else {
+        resolve(result && result.insertId ? result.insertId : null);
+      }
     });
   });
 }
+
+
 
 async function insertCliente(cliente) {
   return new Promise(async (resolve, reject) => {
@@ -188,10 +237,10 @@ async function insertCliente(cliente) {
 }
 
 async function obtenerCliente(req, res) {
-  const clienteId = req.params.id;
+  const clienteValue = req.params.value;
 
   try {
-    const cliente = await getCliente(clienteId);
+    const cliente = await getCliente(clienteValue);
 
     if (!cliente) {
       console.log('Cliente no encontrado.');
@@ -206,10 +255,11 @@ async function obtenerCliente(req, res) {
   }
 }
 
-async function getCliente(clienteId) {
+async function getCliente(clienteValue) {
   return new Promise(async (resolve, reject) => {
     try {
-      const clienteInfo = await queryClienteInfo(clienteId);
+      const clienteInfo = await queryClienteInfo(clienteValue);
+
       if (!clienteInfo) {
         resolve(null);
         return;
@@ -237,9 +287,16 @@ async function getCliente(clienteId) {
   });
 }
 
-async function queryClienteInfo(clienteId) {
+async function queryClienteInfo(clienteValue) {
   return new Promise((resolve, reject) => {
-    db.query('SELECT * FROM clientes WHERE id = ?', [clienteId], (err, result) => {
+    // Verificar si el valor es un número (ID) o una cadena (nombre)
+    const isNumber = !isNaN(clienteValue);
+
+    const query = isNumber
+      ? 'SELECT * FROM clientes WHERE id = ?'
+      : 'SELECT * FROM clientes WHERE name = ?';
+
+    db.query(query, [clienteValue], (err, result) => {
       if (err) reject(err);
       resolve(result.length > 0 ? result[0] : null);
     });

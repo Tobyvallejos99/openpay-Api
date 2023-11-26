@@ -2,17 +2,17 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const db = require('./config/db');
 const clientesRoutes = require('./routes/clientesRoutes');
-
+const cors = require('cors');
 const app = express();
 const port = 3000;
 
+
 app.use(bodyParser.json());
 
-// Rutas CRUD para clientes
+app.use(cors());
+
 app.use(clientesRoutes);
 
-// Resto de las rutas CRUD para clientes...
-// Ruta para generar cargos
 app.post('/cargos', (req, res) => {
   // ... (manejar cargos)
 });
